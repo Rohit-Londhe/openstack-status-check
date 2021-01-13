@@ -1,0 +1,207 @@
+#!/bin/bash
+# -----------------------------------------------------------------------------
+# systemstatus.sh
+# -----------------------------------------------------------------------------
+TOOLHOME=/home/stack
+CTRLNODE01=nebrhct01a
+
+DATE=`date +%Y%m%d%H%M%S`
+LOGDIR=${TOOLHOME}/systemstatus
+LOG=${LOGDIR}/systemstatus.log.${DATE}
+
+
+# -----------------------------------------------------------------------------
+if [ ! -d ${LOGDIR} ]; then
+  echo "This script requires log directory"
+  exit 1
+fi
+if [ ! -f "${TOOLHOME}/overcloudrc" ];then
+  echo "Please put ${TOOLHOME}/overcludrc"
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
+
+function service_status () {
+    source ${TOOLHOME}/overcloudrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## openstack compute service" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    openstack compute service list --long 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 2
+
+    echo "########" | tee -a ${LOG}
+    echo "######## openstack network service" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    openstack network agent list 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 2
+
+    echo "########" | tee -a ${LOG}
+    echo "######## openstack volume service" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    openstack volume service list --long 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 2
+}
+
+function service_resoruce () {
+    source ${TOOLHOME}/overcloudrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## LOG OUTPUT ONLY: nova instance status" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    openstack server list --limit 99999 --all --long >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 5
+
+    echo "########" | tee -a ${LOG}
+    echo "######## LOG OUTPUT ONLY: cinder volume status" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    openstack volume list --limit 99999 --all --long >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 5
+}
+
+function pcs_status () {
+    source ${TOOLHOME}/stackrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## ctrlnode: pacemaker status" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    ansible ${CTRLNODE01} -i /bin/tripleo-ansible-inventory -b -m shell -a "pcs status" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 2
+}
+
+function network_if () {
+    source ${TOOLHOME}/stackrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## overcloud: bonding-if status" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond0 ]; then cat /proc/net/bonding/bond0; else echo 'There is no bond0 status.'; fi" >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond0 ]; then grep 'MII Status' /proc/net/bonding/bond0 | grep -v 'MII Status: up'; echo ''; fi" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond1 ]; then cat /proc/net/bonding/bond1; else echo 'There is no bond1 status.'; fi" >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond1 ]; then grep 'MII Status' /proc/net/bonding/bond1 | grep -v 'MII Status: up'; echo '';  fi" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond1 ]; then grep 'port state' /proc/net/bonding/bond1 | grep -v 'port state: 63'; echo ''; fi" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond2 ]; then cat /proc/net/bonding/bond2; else echo 'There is no bond2 status.'; fi" >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond2 ]; then grep 'MII Status' /proc/net/bonding/bond2 | grep -v 'MII Status: up'; echo ''; fi" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    ansible overcloud -i /bin/tripleo-ansible-inventory -b -m shell -a "if [ -f /proc/net/bonding/bond2 ]; then grep 'port state' /proc/net/bonding/bond2 | grep -v 'port state: 63'; echo ''; fi" 2>&1 | tee -a ${LOG}
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 5
+}
+
+function disk_dev () {
+    source ${TOOLHOME}/stackrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## LOG OUTPUT ONLY: Controller,Compute: disk device status" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    ansible Controller,Compute -i /bin/tripleo-ansible-inventory -b -m shell -a "multipath -ll; echo ''; lsblk -i" >> ${LOG} 2>&1
+    #ansible Controller,Compute -i /bin/tripleo-ansible-inventory -b -m shell -a "iscsiadm -m session; echo ''; lsblk -i" >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 5
+}
+
+function storage_status () {
+    source ${TOOLHOME}/stackrc
+
+    echo "########" | tee -a ${LOG}
+    echo "######## LOG OUTPUT ONLY: storage: LUN presents" | tee -a ${LOG}
+    echo "########" | tee -a ${LOG}
+    ${TOOLHOME}/x2/hirai-kun.sh >> ${LOG} 2>&1
+    #ansible BlockStorage -i /bin/tripleo-ansible-inventory -b -m shell -a "targetcli ls; echo ''; dmsetup ls --tree -o ascii; vgdisplay -v; echo '';lsblk -i" >> ${LOG} 2>&1
+    if [ $? != 0 ]; then echo "*** Execution ERROR. Line=[$LINENO] Code=[$?]" ; exit 1; fi
+    echo "" | tee -a ${LOG}
+    echo "" | tee -a ${LOG}
+
+    sleep 5
+}
+
+echo "_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/"
+echo "_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/"
+echo "_/_/_/_/_/_/_/_/                  System Status                 _/_/_/_/_/_/_/_/"
+echo "_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/"
+echo "_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/"
+echo "1: ALL"
+echo "2: SERVICE STATUS"
+echo "3: SERVICE & SERVICE_RESOURCES"
+echo "4: SERVICE & NETWORK-IF STATUS"
+echo "5: SERVICE & DISK-DEV & STORAGE STATUS"
+
+echo -n "entry: "
+read ANS
+case "${ANS}" in
+    1)
+        service_status
+        pcs_status
+        network_if
+        disk_dev
+        storage_status
+        service_resoruce
+        ;;
+    2)
+        service_status
+        pcs_status
+        ;;
+    3)
+        service_status
+        pcs_status
+        service_resoruce
+        ;;
+    4)
+        service_status
+        pcs_status
+        network_if
+        ;;
+    5)
+        service_status
+        pcs_status
+        disk_dev
+        storage_status
+        ;;
+    *)
+        echo "...it's an invalid selection"
+        exit 1
+        ;;
+esac
+
+echo "System Status ..Done!"
+exit 0
+
