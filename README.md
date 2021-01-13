@@ -1,2 +1,2 @@
-# myfirstproject
+# Openstack status check
 shell script
